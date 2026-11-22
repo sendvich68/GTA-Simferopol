@@ -20,6 +20,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0' # Явно указываем пакеты, чтобы избежать ошибки 'tools'
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew || true
@@ -37,4 +39,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: GTA-Simferopol-1-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk # ИЗМЕНЕНО: app -> play
