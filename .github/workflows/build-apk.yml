@@ -22,19 +22,17 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
-          # Параметр disable_animations не нужен, просто оставляем пакеты
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew || true
 
       - name: Build Debug APK
         run: |
-          if [ -f ./gradlew ]; then
-            ./gradlew assembleDebug
-          else
+          # Принудительно используем Gradle 8.5 для стабильности
+          if [ ! -f ./gradlew ]; then
             gradle wrapper --gradle-version 8.5
-            ./gradlew assembleDebug
           fi
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
