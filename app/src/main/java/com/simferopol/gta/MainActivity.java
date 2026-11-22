@@ -7,6 +7,7 @@ import android.view.WindowManager;
 
 public class MainActivity extends Activity {
     private GameView gameView;
+    private SoundManager soundManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -16,7 +17,11 @@ public class MainActivity extends Activity {
             WindowManager.LayoutParams.FLAG_FULLSCREEN,
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
-        gameView = new GameView(this);
+        
+        soundManager = new SoundManager(this);
+        soundManager.init();
+
+        gameView = new GameView(this, soundManager);
         setContentView(gameView);
     }
 
@@ -24,11 +29,19 @@ public class MainActivity extends Activity {
     protected void onPause() {
         super.onPause();
         gameView.pause();
+        soundManager.pauseAll();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         gameView.resume();
+        soundManager.resumeAll();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        soundManager.release();
     }
 }
