@@ -14,13 +14,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private Thread thread;
     private volatile boolean running;
 
-    // Игрок (машина)
     private float carX = 400, carY = 300;
     private float carSpeed = 0;
     private float carAngle = 0;
     private final float MAX_SPEED = 6f;
 
-    // Управление
     private boolean gas = false, brake = false, left = false, right = false;
 
     private final Paint roadPaint = new Paint();
@@ -30,7 +28,6 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private final Paint btnPaint = new Paint();
     private final Paint textPaint = new Paint();
 
-    // Здания Симферополя (условные)
     private final RectF[] buildings = {
         new RectF(100, 100, 250, 200),
         new RectF(700, 80, 900, 220),
@@ -132,11 +129,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         try {
             c = getHolder().lockCanvas();
             if (c == null) return;
-            c.drawColor(Color.rgb(90, 140, 90)); // трава/земля
+            c.drawColor(Color.rgb(90, 140, 90));
 
-            // Дороги (крест)
-            c.drawRect(0, height / 2f - 120, width, height / 2f + 120, roadPaint);
-            c.drawRect(width / 2f - 120, 0, width / 2f + 120, height, roadPaint);
+            // Дороги (под портретный экран)
+            c.drawRect(0, height / 2f - 150, width, height / 2f + 150, roadPaint);
+            c.drawRect(width / 2f - 150, 0, width / 2f + 150, height, roadPaint);
 
             // Разметка
             for (float x = 0; x < width; x += 80)
@@ -153,19 +150,19 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             c.rotate((float) Math.toDegrees(carAngle));
             RectF car = new RectF(-25, -40, 25, 40);
             c.drawRect(car, carPaint);
-            // Лобовое стекло
             Paint glass = new Paint();
             glass.setColor(Color.CYAN);
             c.drawRect(new RectF(-18, -25, 18, -5), glass);
             c.restore();
 
-            // Кнопки управления
-            drawButton(c, 120, height - 200, 60, "◀");
-            drawButton(c, 260, height - 200, 60, "▶");
-            drawButton(c, width - 260, height - 200, 60, "▲");
-            drawButton(c, width - 120, height - 200, 60, "■");
+            // Кнопки управления (адаптация под вертикальный экран)
+            float btnY = height - 200;
+            drawButton(c, 80, btnY, 60, "◀");
+            drawButton(c, 220, btnY, 60, "▶");
+            drawButton(c, width - 220, btnY, 60, "▲");
+            drawButton(c, width - 80, btnY, 60, "■");
 
-            // Заголовок
+            // HUD
             c.drawText("GTA Simferopol 1", 30, 60, textPaint);
             textPaint.setTextSize(28);
             c.drawText("Speed: " + (int)(carSpeed * 10) + " km/h", 30, 100, textPaint);
@@ -190,14 +187,16 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         float x = e.getX(), y = e.getY();
-        float leftCx = 120, rightCx = 260, gasCx = width - 260, brakeCx = width - 120;
-        float cy = height - 200;
+        float btnY = height - 200;
+
+        float leftCx = 80, rightCx = 220;
+        float gasCx = width - 220, brakeCx = width - 80;
 
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
-            if (dist(x, y, leftCx, cy) < 80) left = true;
-            if (dist(x, y, rightCx, cy) < 80) right = true;
-            if (dist(x, y, gasCx, cy) < 80) gas = true;
-            if (dist(x, y, brakeCx, cy) < 80) brake = true;
+            if (dist(x, y, leftCx, btnY) < 80) left = true;
+            if (dist(x, y, rightCx, btnY) < 80) right = true;
+            if (dist(x, y, gasCx, btnY) < 80) gas = true;
+            if (dist(x, y, brakeCx, btnY) < 80) brake = true;
         } else if (e.getAction() == MotionEvent.ACTION_UP ||
                    e.getAction() == MotionEvent.ACTION_CANCEL) {
             left = right = gas = brake = false;
