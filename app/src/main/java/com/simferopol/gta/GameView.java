@@ -15,27 +15,36 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     private volatile boolean running;
     private SoundManager soundManager;
 
-    // Игрок (машина)
-    private float carX = 0.5f; // 0.0 до 1.0 (относительно ширины экрана)
-    private float carSpeed = 0;
-    private final float MAX_SPEED = 1.0f;
+    // Игрок
+    private float playerX = 0; // Смещение по дороге (-1.0 влево, 1.0 вправо)
+    private float playerZ = 0; // Глубина (движение вперед)
     
-    // Состояние
-    private boolean inCar = false; // Открыта ли дверь/в машине ли игрок
-    private boolean gas = false, brake = false, left = false, right = false;
+    // Управление
+    private boolean movingLeft = false;
+    private boolean movingRight = false;
+    private boolean movingForward = false;
+    private boolean movingBackward = false;
+    private boolean shooting = false;
 
+    // NPC (Полицейская машина)
+    private float copZ = 1500; // Расстояние до машины
+    private float copX = 0; // Позиция машины
+    private boolean copExploded = false;
+
+    // Оружие
+    private int ammo = 30;
+
+    // Отрисовка
+    private final Paint paint = new Paint();
+    private final Paint skyPaint = new Paint();
     private final Paint roadPaint = new Paint();
-    private final Paint linePaint = new Paint();
-    private final Paint carPaint = new Paint();
-    private final Paint carShadowPaint = new Paint();
+    private final Paint gunPaint = new Paint();
     private final Paint btnPaint = new Paint();
     private final Paint textPaint = new Paint();
-
-    private int width, height;
     
-    // Для 2.5D дороги
+    private int width, height;
     private float horizonY;
-    private float roadCenterX;
+    private float fov = 800f; // Фокусное расстояние
 
     public GameView(Context context, SoundManager soundManager) {
         super(context);
@@ -45,20 +54,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void initPaints() {
-        roadPaint.setColor(Color.rgb(60, 60, 60));
-        
-        linePaint.setColor(Color.YELLOW);
-        linePaint.setStrokeWidth(10);
-        linePaint.setStyle(Paint.Style.FILL);
-        
-        carPaint.setColor(Color.RED);
-        
-        carShadowPaint.setColor(Color.argb(100, 0, 0, 0));
-        
+        skyPaint.setColor(Color.rgb(135, 206, 235));
+        roadPaint.setColor(Color.rgb(80, 80, 80));
+        gunPaint.setColor(Color.rgb(40, 40, 40)); // Темно-серый ствол
         btnPaint.setColor(Color.argb(150, 255, 255, 255));
-        
         textPaint.setColor(Color.WHITE);
-        textPaint.setTextSize(60);
+        textPaint.setTextSize(50);
         textPaint.setAntiAlias(true);
     }
 
@@ -66,8 +67,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     public void surfaceCreated(SurfaceHolder holder) {
         width = getWidth();
         height = getHeight();
-        horizonY = height * 0.3f; // Горизонт на 30% высоты
-        roadCenterX = width / 2f;
+        horizonY = height * 0.4f;
         running = true;
         thread = new Thread(this);
         thread.start();
@@ -77,6 +77,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     public void surfaceChanged(SurfaceHolder holder, int f, int w, int h) {
         width = w;
         height = h;
+        horizonY = height * 0.4f;
     }
 
     @Override
@@ -113,26 +114,33 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void update() {
-        if (inCar) {
-            // Физика движения
-            if (gas) carSpeed = Math.min(carSpeed + 0.02f, MAX_SPEED);
-            else if (brake) carSpeed = Math.max(carSpeed - 0.03f, 0);
-            else carSpeed *= 0.98f; // Трение
+        float speed = 15f;
+        if (movingForward) playerZ += speed;
+        if (movingBackward) playerZ -= speed;
+        if (movingLeft) playerX -= 0.05f;
+        if (movingRight) playerX += 0.05f;
 
-            // Движение машины влево/вправо по дороге (2.5D)
-            if (left && carSpeed > 0) carX -= 0.02f;
-            if (right && carSpeed > 0) carX += 0.02f;
+        // Ограничение движения
+        if (playerX < -1f) playerX = -1f;
+        if (playerX > 1f) playerX = 1f;
 
-            // Ограничение по краям дороги
-            if (carX < 0.2f) carX = 0.2f;
-            if (carX > 0.8f) carX = 0.8f;
+        // Полиция едет на нас, если не взорвана
+        if (!copExploded) {
+            copZ -= 5f; 
+            if (copZ < 50) copZ = 2000; // Респавн
+        }
 
-            // Управление звуком двигателя
-            soundManager.setEngineVolume(carSpeed);
-            if (carSpeed > 0.05f) soundManager.startEngine();
-            else soundManager.stopEngine();
-        } else {
-            soundManager.stopEngine();
+        if (shooting) {
+            shooting = false; // Стреляем по одному выстрелу
+            if (ammo > 0) {
+                ammo--;
+                soundManager.playClick(); // Звук выстрела (используем клик)
+                // Проверка попадания
+                if (!copExploded && copZ > 0 && copZ < 1500 && Math.abs(copX - playerX) < 0.3f) {
+                    copExploded = true;
+                    soundManager.playFire(); // Звук взрыва
+                }
+            }
         }
     }
 
@@ -143,87 +151,115 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             if (c == null) return;
             
             // Небо и земля
-            c.drawColor(Color.rgb(135, 206, 235)); // Небо
-            c.drawRect(0, horizonY, width, height, new Paint(Color.rgb(90, 140, 90))); // Трава
+            c.drawRect(0, 0, width, height, skyPaint);
+            c.drawRect(0, horizonY, width, height, new Paint(Color.rgb(50, 120, 50))); // Трава
 
-            // 2.5D Дорога (трапеция)
-            Path roadPath = new Path();
-            float roadBottomWidth = width * 0.8f;
-            float roadTopWidth = width * 0.1f;
-            roadPath.moveTo(roadCenterX - roadTopWidth / 2, horizonY);
-            roadPath.lineTo(roadCenterX + roadTopWidth / 2, horizonY);
-            roadPath.lineTo(roadCenterX + roadBottomWidth / 2, height);
-            roadPath.lineTo(roadCenterX - roadBottomWidth / 2, height);
-            roadPath.close();
-            c.drawPath(roadPath, roadPaint);
+            // Дорога (в перспективе)
+            drawRoad(c);
 
-            // 2.5D Разметка (пунктир)
-            for (float i = 0; i < 1.0f; i += 0.1f) {
-                float y1 = horizonY + (height - horizonY) * i;
-                float y2 = horizonY + (height - horizonY) * (i + 0.05f);
-                float w1 = roadTopWidth + (roadBottomWidth - roadTopWidth) * i;
-                float w2 = roadTopWidth + (roadBottomWidth - roadTopWidth) * (i + 0.05f);
-                
-                Path linePath = new Path();
-                linePath.moveTo(roadCenterX - w1 * 0.05f, y1);
-                linePath.lineTo(roadCenterX + w1 * 0.05f, y1);
-                linePath.lineTo(roadCenterX + w2 * 0.05f, y2);
-                linePath.lineTo(roadCenterX - w2 * 0.05f, y2);
-                linePath.close();
-                c.drawPath(linePath, linePaint);
+            // Машина полиции (3D-куб)
+            if (!copExploded) {
+                draw3DCube(c, copX, copZ, Color.BLUE, 200, 100, 150);
             }
 
-            // Машина (2.5D вид сзади)
-            if (inCar) {
-                float carW = width * 0.2f;
-                float carH = carW * 1.5f;
-                float carCX = roadCenterX - roadBottomWidth / 2 + roadBottomWidth * carX;
-                float carCY = height * 0.8f;
-                
-                // Тень
-                c.drawRect(carCX - carW/2, carCY, carCX + carW/2, carCY + 20, carShadowPaint);
-                
-                // Кузов (сзади)
-                c.drawRect(carCX - carW/2, carCY - carH, carCX + carW/2, carCY, carPaint);
-                
-                // Заднее стекло
-                Paint glassPaint = new Paint();
-                glassPaint.setColor(Color.CYAN);
-                c.drawRect(carCX - carW/3, carCY - carH * 0.8f, carCX + carW/3, carCY - carH * 0.5f, glassPaint);
-                
-                // Фары
-                Paint lightPaint = new Paint();
-                lightPaint.setColor(Color.YELLOW);
-                c.drawRect(carCX - carW/2 + 5, carCY - 10, carCX - carW/4, carCY, lightPaint);
-                c.drawRect(carCX + carW/4, carCY - 10, carCX + carW/2 - 5, carCY, lightPaint);
-            }
+            // Отрисовка оружия (от первого лица)
+            drawWeapon(c);
 
-            // Кнопки управления (внизу)
-            if (inCar) {
-                float btnY = height - 200;
-                drawButton(c, 120, btnY, 100, "◀");
-                drawButton(c, 350, btnY, 100, "▶");
-                drawButton(c, width - 350, btnY, 100, "▲");
-                drawButton(c, width - 120, btnY, 100, "■");
-            } else {
-                // Кнопка "Сесть в машину" (Дверь)
-                drawButton(c, width/2f, height - 200, 150, "Открыть дверь");
-            }
+            // UI
+            textPaint.setTextSize(50);
+            c.drawText("Патроны: " + ammo, 50, 80, textPaint);
+            c.drawText("Позиция X: " + String.format("%.2f", playerX), 50, 140, textPaint);
 
-            // HUD
-            textPaint.setTextSize(60);
-            c.drawText("GTA Simferopol 1.1 (2.5D)", 30, 80, textPaint);
-            textPaint.setTextSize(45);
-            c.drawText("Скорость: " + (int)(carSpeed * 100) + " км/ч", 30, 140, textPaint);
+            // Кнопки управления
+            drawButton(c, 150, height - 200, 100, "◀"); // Влево
+            drawButton(c, 350, height - 200, 100, "▶"); // Вправо
+            drawButton(c, width - 350, height - 200, 100, "▲"); // Вперед
+            drawButton(c, width - 150, height - 200, 100, "▼"); // Назад
+            
+            // Кнопка выстрела
+            drawButton(c, width - 150, height - 450, 120, "🔥 ОГОНЬ");
 
         } finally {
             if (c != null) getHolder().unlockCanvasAndPost(c);
         }
     }
 
+    // Рисуем дорогу, сужающуюся к горизонту
+    private void drawRoad(Canvas c) {
+        Path road = new Path();
+        float roadWBottom = width * 1.5f;
+        float roadWTop = width * 0.1f;
+        
+        road.moveTo(width / 2f - roadWTop / 2, horizonY);
+        road.lineTo(width / 2f + roadWTop / 2, horizonY);
+        road.lineTo(width / 2f + roadWBottom / 2, height);
+        road.lineTo(width / 2f - roadWBottom / 2, height);
+        road.close();
+        c.drawPath(road, roadPaint);
+
+        // Разметка
+        Paint line = new Paint();
+        line.setColor(Color.YELLOW);
+        for (float z = 0; z < 2000; z += 200) {
+            float scale = fov / (z + fov);
+            float y = horizonY + (height - horizonY) * scale;
+            float w = width * 0.02f * scale;
+            c.drawRect(width / 2f - w / 2, y, width / 2f + w / 2, y + 20 * scale, line);
+        }
+    }
+
+    // Рисуем 3D-куб (объект)
+    private void draw3DCube(Canvas c, float objX, float objZ, int color, float sizeW, float sizeH, float sizeD) {
+        if (objZ <= 0 || objZ > 3000) return; // За пределами видимости
+        
+        float scale = fov / objZ; // Чем дальше, тем меньше
+        float screenX = width / 2f + (objX * width * 0.5f * scale) - (width/2f); // Учет смещения игрока
+        float screenY = horizonY + (height / 2f) * scale; 
+        
+        float w = sizeW * scale;
+        float h = sizeH * scale;
+
+        Paint p = new Paint();
+        p.setColor(color);
+
+        // Задняя стенка (чуть темнее)
+        Paint back = new Paint();
+        back.setColor(Color.rgb(
+            Math.max(0, Color.red(color) - 30),
+            Math.max(0, Color.green(color) - 30),
+            Math.max(0, Color.blue(color) - 30)
+        ));
+
+        // Рисуем как прямоугольник
+        c.drawRect(screenX - w / 2, screenY - h, screenX + w / 2, screenY, p);
+        
+        // Мигалка (если полиция)
+        if (color == Color.BLUE) {
+            Paint light = new Paint();
+            light.setColor(Color.RED);
+            c.drawRect(screenX - w / 2 + 10, screenY - h + 10, screenX + w / 2 - 10, screenY - h + 30, light);
+        }
+    }
+
+    // Оружие (рука с пистолетом)
+    private void drawWeapon(Canvas c) {
+        Path gun = new Path();
+        gun.moveTo(width - 200, height);
+        gun.lineTo(width - 100, height - 300);
+        gun.lineTo(width - 50, height - 300);
+        gun.lineTo(width, height);
+        gun.close();
+        c.drawPath(gun, gunPaint);
+        
+        // Ствол
+        Paint barrel = new Paint();
+        barrel.setColor(Color.BLACK);
+        c.drawRect(width - 150, height - 300, width - 70, height - 250, barrel);
+    }
+
     private void drawButton(Canvas c, float cx, float cy, float r, String label) {
         c.drawCircle(cx, cy, r, btnPaint);
-        textPaint.setTextSize(70);
+        textPaint.setTextSize(60);
         textPaint.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
         float ty = cy - (fm.ascent + fm.descent) / 2;
@@ -236,36 +272,13 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float x = e.getX(), y = e.getY();
         
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
-            if (!inCar) {
-                // Нажатие на кнопку двери
-                if (dist(x, y, width/2f, height - 200) < 150) {
-                    inCar = true;
-                    soundManager.playDoorOpen();
-                    soundManager.playClick();
-                }
-            } else {
-                // Управление машиной
-                float btnY = height - 200;
-                float leftCx = 120, rightCx = 350;
-                float gasCx = width - 350, brakeCx = width - 120;
-
-                if (dist(x, y, leftCx, btnY) < 120) left = true;
-                if (dist(x, y, rightCx, btnY) < 120) right = true;
-                if (dist(x, y, gasCx, btnY) < 120) {
-                    gas = true;
-                    if (carSpeed < 0.1f) soundManager.playClick(); // Клик при старте
-                }
-                if (dist(x, y, brakeCx, btnY) < 120) brake = true;
-                
-                // Двойной тап для выхода из машины (закрыть дверь)
-                if (e.getPointerCount() == 2) {
-                    inCar = false;
-                    soundManager.playDoorClose();
-                }
-            }
-        } else if (e.getAction() == MotionEvent.ACTION_UP ||
-                   e.getAction() == MotionEvent.ACTION_CANCEL) {
-            left = right = gas = brake = false;
+            if (dist(x, y, 150, height - 200) < 120) movingLeft = true;
+            if (dist(x, y, 350, height - 200) < 120) movingRight = true;
+            if (dist(x, y, width - 350, height - 200) < 120) movingForward = true;
+            if (dist(x, y, width - 150, height - 200) < 120) movingBackward = true;
+            if (dist(x, y, width - 150, height - 450) < 150) shooting = true;
+        } else if (e.getAction() == MotionEvent.ACTION_UP) {
+            movingLeft = movingRight = movingForward = movingBackward = false;
         }
         return true;
     }
