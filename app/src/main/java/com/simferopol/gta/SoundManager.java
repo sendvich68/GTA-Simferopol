@@ -4,52 +4,29 @@ import android.content.Context;
 import android.media.MediaPlayer;
 
 public class SoundManager {
-    private MediaPlayer bgMusic;
-    private MediaPlayer doorOpenSound;
-    private MediaPlayer doorCloseSound;
-    private MediaPlayer clickSound;
-    private MediaPlayer engineSound;
-    private MediaPlayer fireSound;
+    private MediaPlayer bgMusic, doorOpenSound, doorCloseSound, clickSound, engineSound, fireSound;
     private Context context;
 
-    public SoundManager(Context context) {
-        this.context = context;
-    }
+    public SoundManager(Context context) { this.context = context; }
 
     public void init() {
-        // Ищем звуки с разными возможными названиями
-        bgMusic = createMediaPlayer(getSoundId("music_menu"));
-        doorOpenSound = createMediaPlayer(getSoundId("door_open", "car_door_open"));
-        doorCloseSound = createMediaPlayer(getSoundId("door_close", "car_door_close"));
-        clickSound = createMediaPlayer(getSoundId("click"));
-        engineSound = createMediaPlayer(getSoundId("car_engine", "engine"));
-        fireSound = createMediaPlayer(getSoundId("car_fire", "fire"));
+        bgMusic = create(getId("music_menu"));
+        doorOpenSound = create(getId("door_open", "car_door_open"));
+        doorCloseSound = create(getId("door_close", "car_door_close"));
+        clickSound = create(getId("click"));
+        engineSound = create(getId("car_engine", "engine"));
+        fireSound = create(getId("car_fire", "fire", "explosion"));
         
-        if (bgMusic != null) {
-            bgMusic.setLooping(true);
-            bgMusic.setVolume(0.5f, 0.5f);
-            bgMusic.start();
-        }
-        if (engineSound != null) {
-            engineSound.setLooping(true);
-            engineSound.setVolume(0f, 0f);
-        }
+        if (bgMusic != null) { bgMusic.setLooping(true); bgMusic.start(); }
+        if (engineSound != null) { engineSound.setLooping(true); engineSound.setVolume(0f, 0f); }
     }
 
-    // Хелпер для безопасного создания плеера
-    private MediaPlayer createMediaPlayer(int resId) {
-        if (resId != 0) {
-            try {
-                return MediaPlayer.create(context, resId);
-            } catch (Exception e) {
-                return null;
-            }
-        }
+    private MediaPlayer create(int resId) {
+        if (resId != 0) try { return MediaPlayer.create(context, resId); } catch (Exception e) { return null; }
         return null;
     }
 
-    // Ищет ресурс по нескольким именам. Если нет — возвращает 0.
-    private int getSoundId(String... names) {
+    private int getId(String... names) {
         for (String name : names) {
             int id = context.getResources().getIdentifier(name, "raw", context.getPackageName());
             if (id != 0) return id;
@@ -61,29 +38,17 @@ public class SoundManager {
     public void playDoorClose() { if (doorCloseSound != null) doorCloseSound.start(); }
     public void playClick() { if (clickSound != null) clickSound.start(); }
     public void playFire() { if (fireSound != null) fireSound.start(); }
-
-    public void setEngineVolume(float volume) {
-        if (engineSound != null) engineSound.setVolume(volume, volume);
-    }
-
-    public void startEngine() {
-        if (engineSound != null && !engineSound.isPlaying()) engineSound.start();
-    }
-
-    public void stopEngine() {
-        if (engineSound != null && engineSound.isPlaying()) engineSound.pause();
-    }
-
+    public void setEngineVolume(float v) { if (engineSound != null) engineSound.setVolume(v, v); }
+    public void startEngine() { if (engineSound != null && !engineSound.isPlaying()) engineSound.start(); }
+    public void stopEngine() { if (engineSound != null && engineSound.isPlaying()) engineSound.pause(); }
     public void pauseAll() {
         if (bgMusic != null && bgMusic.isPlaying()) bgMusic.pause();
         if (engineSound != null && engineSound.isPlaying()) engineSound.pause();
     }
-
     public void resumeAll() {
         if (bgMusic != null && !bgMusic.isPlaying()) bgMusic.start();
         if (engineSound != null && !engineSound.isPlaying()) engineSound.start();
     }
-
     public void release() {
         if (bgMusic != null) bgMusic.release();
         if (doorOpenSound != null) doorOpenSound.release();
