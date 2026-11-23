@@ -2,7 +2,6 @@ package com.simferopol.gta;
 
 import android.content.Context;
 import android.media.MediaPlayer;
-import com.simferopol.gta.R;
 
 public class SoundManager {
     private MediaPlayer bgMusic;
@@ -18,60 +17,61 @@ public class SoundManager {
     }
 
     public void init() {
-        // Фоновая музыка (зацикленная)
-        bgMusic = MediaPlayer.create(context, R.raw.music_menu);
+        // Ищем звуки с разными возможными названиями
+        bgMusic = createMediaPlayer(getSoundId("music_menu"));
+        doorOpenSound = createMediaPlayer(getSoundId("door_open", "car_door_open"));
+        doorCloseSound = createMediaPlayer(getSoundId("door_close", "car_door_close"));
+        clickSound = createMediaPlayer(getSoundId("click"));
+        engineSound = createMediaPlayer(getSoundId("car_engine", "engine"));
+        fireSound = createMediaPlayer(getSoundId("car_fire", "fire"));
+        
         if (bgMusic != null) {
             bgMusic.setLooping(true);
             bgMusic.setVolume(0.5f, 0.5f);
             bgMusic.start();
         }
-
-        // Короткие звуки
-        doorOpenSound = MediaPlayer.create(context, R.raw.door_open);
-        doorCloseSound = MediaPlayer.create(context, R.raw.door_close);
-        clickSound = MediaPlayer.create(context, R.raw.click);
-        fireSound = MediaPlayer.create(context, R.raw.car_fire);
-        
-        // Звук двигателя (цикличный)
-        engineSound = MediaPlayer.create(context, R.raw.car_engine);
         if (engineSound != null) {
             engineSound.setLooping(true);
-            engineSound.setVolume(0f, 0f); // Изначально тихо
+            engineSound.setVolume(0f, 0f);
         }
     }
 
-    public void playDoorOpen() {
-        if (doorOpenSound != null) doorOpenSound.start();
+    // Хелпер для безопасного создания плеера
+    private MediaPlayer createMediaPlayer(int resId) {
+        if (resId != 0) {
+            try {
+                return MediaPlayer.create(context, resId);
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return null;
     }
 
-    public void playDoorClose() {
-        if (doorCloseSound != null) doorCloseSound.start();
+    // Ищет ресурс по нескольким именам. Если нет — возвращает 0.
+    private int getSoundId(String... names) {
+        for (String name : names) {
+            int id = context.getResources().getIdentifier(name, "raw", context.getPackageName());
+            if (id != 0) return id;
+        }
+        return 0;
     }
 
-    public void playClick() {
-        if (clickSound != null) clickSound.start();
-    }
-
-    public void playFire() {
-        if (fireSound != null) fireSound.start();
-    }
+    public void playDoorOpen() { if (doorOpenSound != null) doorOpenSound.start(); }
+    public void playDoorClose() { if (doorCloseSound != null) doorCloseSound.start(); }
+    public void playClick() { if (clickSound != null) clickSound.start(); }
+    public void playFire() { if (fireSound != null) fireSound.start(); }
 
     public void setEngineVolume(float volume) {
-        if (engineSound != null) {
-            engineSound.setVolume(volume, volume);
-        }
+        if (engineSound != null) engineSound.setVolume(volume, volume);
     }
 
     public void startEngine() {
-        if (engineSound != null && !engineSound.isPlaying()) {
-            engineSound.start();
-        }
+        if (engineSound != null && !engineSound.isPlaying()) engineSound.start();
     }
 
     public void stopEngine() {
-        if (engineSound != null && engineSound.isPlaying()) {
-            engineSound.pause();
-        }
+        if (engineSound != null && engineSound.isPlaying()) engineSound.pause();
     }
 
     public void pauseAll() {
