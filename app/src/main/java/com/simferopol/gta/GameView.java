@@ -4,81 +4,133 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.Path;
+import android.net.Uri;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 
-public class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable {
+import com.google.ar.sceneform.Camera;
+import com.google.ar.sceneform.Node;
+import com.google.ar.sceneform.Scene;
+import com.google.ar.sceneform.SceneView;
+import com.google.ar.sceneform.animation.ModelAnimator;
+import com.google.ar.sceneform.math.Quaternion;
+import com.google.ar.sceneform.math.Vector3;
+import com.google.ar.sceneform.rendering.ModelRenderable;
+import com.google.ar.sceneform.rendering.ShapeFactory;
 
+public class GameView extends SceneView implements SurfaceHolder.Callback, Runnable {
     private Thread thread;
     private volatile boolean running;
     private SoundManager soundManager;
 
-    // Игрок
-    private float playerX = 0; // Смещение по дороге (-1.0 влево, 1.0 вправо)
-    private float playerZ = 0; // Глубина (движение вперед)
-    
+    private Node playerNode;
+    private Node copNode;
+    private ModelAnimator playerAnimator;
+    private ModelAnimator copAnimator;
+
+    // Координаты игрока
+    private float playerX = 0f;
+    private float playerZ = 0f;
+
     // Управление
-    private boolean movingLeft = false;
-    private boolean movingRight = false;
     private boolean movingForward = false;
     private boolean movingBackward = false;
+    private boolean movingLeft = false;
+    private boolean movingRight = false;
     private boolean shooting = false;
 
-    // NPC (Полицейская машина)
-    private float copZ = 1500; // Расстояние до машины
-    private float copX = 0; // Позиция машины
-    private boolean copExploded = false;
-
-    // Оружие
-    private int ammo = 30;
-
-    // Отрисовка
-    private final Paint paint = new Paint();
-    private final Paint skyPaint = new Paint();
-    private final Paint roadPaint = new Paint();
-    private final Paint gunPaint = new Paint();
-    private final Paint btnPaint = new Paint();
-    private final Paint textPaint = new Paint();
-    
-    private int width, height;
-    private float horizonY;
-    private float fov = 800f; // Фокусное расстояние
+    // Рисование UI
+    private Paint textPaint = new Paint();
+    private Paint buttonPaint = new Paint();
 
     public GameView(Context context, SoundManager soundManager) {
         super(context);
         this.soundManager = soundManager;
-        getHolder().addCallback(this);
         initPaints();
+        initWorld();
     }
 
     private void initPaints() {
-        skyPaint.setColor(Color.rgb(135, 206, 235));
-        roadPaint.setColor(Color.rgb(80, 80, 80));
-        gunPaint.setColor(Color.rgb(40, 40, 40)); // Темно-серый ствол
-        btnPaint.setColor(Color.argb(150, 255, 255, 255));
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(50);
         textPaint.setAntiAlias(true);
+        
+        buttonPaint.setColor(Color.argb(120, 255, 255, 255));
+    }
+
+    private void initWorld() {
+        // 1. Загружаем игрока (CJ)
+        loadModel("cj.glb", renderable -> {
+            playerNode = new Node();
+            playerNode.setRenderable(renderable);
+            playerNode.setLocalPosition(new Vector3(0, 0, 0));
+            playerNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
+            getScene().addChild(playerNode);
+
+            if (renderable.getAnimationDataCount() > 0) {
+                playerAnimator = new ModelAnimator(renderable, 0);
+                playerAnimator.setLooping(true);
+                playerAnimator.start();
+            }
+        });
+
+        // 2. Спавним NPC (Полицейский)
+        // Используем куб как заглушку, если нет модели npc.glb
+        loadModel("npc.glb", renderable -> {
+            copNode = new Node();
+            copNode.setRenderable(renderable);
+            copNode.setLocalPosition(new Vector3(10f, 0f, -15f)); // Стоит впереди
+            copNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
+            getScene().addChild(copNode);
+            
+            if (renderable.getAnimationDataCount() > 0) {
+                copAnimator = new ModelAnimator(renderable, 0);
+                copAnimator.setLooping(true);
+                copAnimator.start();
+            }
+        });
+
+        // 3. Спавним Дома (кубики, если нет моделей)
+        Node houseNode = new Node();
+        houseNode.setRenderable(ShapeFactory.makeCube(new Vector3(10f, 10f, 10f), new Vector3(0, 5f, 0), null));
+        houseNode.setLocalPosition(new Vector3(-15f, 0f, -20f));
+        getScene().addChild(houseNode);
+    }
+
+    // Хелпер для загрузки моделей
+    private void loadModel(String path, OnModelLoaded listener) {
+        ModelRenderable.builder()
+            .setSource(getContext(), Uri.parse(path))
+            .build()
+            .thenAccept(renderable -> {
+                if (listener != null) listener.onLoaded(renderable);
+            })
+            .exceptionally(throwable -> {
+                // Если модели нет — создаем куб-заглушку
+                if (listener != null) {
+                    listener.onLoaded(ShapeFactory.makeCube(
+                        new Vector3(1f, 1f, 1f), 
+                        new Vector3(0, 0.5f, 0), 
+                        null
+                    ));
+                }
+                return null;
+            });
+    }
+
+    interface OnModelLoaded {
+        void onLoaded(ModelRenderable renderable);
     }
 
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        width = getWidth();
-        height = getHeight();
-        horizonY = height * 0.4f;
         running = true;
         thread = new Thread(this);
         thread.start();
     }
 
     @Override
-    public void surfaceChanged(SurfaceHolder holder, int f, int w, int h) {
-        width = w;
-        height = h;
-        horizonY = height * 0.4f;
-    }
+    public void surfaceChanged(SurfaceHolder holder, int f, int w, int h) {}
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
@@ -88,7 +140,12 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         } catch (InterruptedException ignored) {}
     }
 
-    public void pause() { running = false; }
+    public void pause() { 
+        running = false; 
+        if (playerAnimator != null) playerAnimator.pause();
+        if (copAnimator != null) copAnimator.pause();
+    }
+
     public void resume() {
         if (!running && thread != null && thread.isAlive()) {
             running = true;
@@ -97,6 +154,8 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
             thread = new Thread(this);
             thread.start();
         }
+        if (playerAnimator != null && !playerAnimator.isRunning()) playerAnimator.resume();
+        if (copAnimator != null && !copAnimator.isRunning()) copAnimator.resume();
     }
 
     @Override
@@ -104,7 +163,7 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         while (running) {
             long start = System.currentTimeMillis();
             update();
-            draw();
+            drawUI();
             long elapsed = System.currentTimeMillis() - start;
             long sleep = 16 - elapsed;
             if (sleep > 0) {
@@ -114,151 +173,62 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
     }
 
     private void update() {
-        float speed = 15f;
-        if (movingForward) playerZ += speed;
-        if (movingBackward) playerZ -= speed;
-        if (movingLeft) playerX -= 0.05f;
-        if (movingRight) playerX += 0.05f;
+        float speed = 0.1f;
+        
+        if (movingForward) playerZ -= speed;
+        if (movingBackward) playerZ += speed;
+        if (movingLeft) playerX -= speed;
+        if (movingRight) playerX += speed;
 
-        // Ограничение движения
-        if (playerX < -1f) playerX = -1f;
-        if (playerX > 1f) playerX = 1f;
-
-        // Полиция едет на нас, если не взорвана
-        if (!copExploded) {
-            copZ -= 5f; 
-            if (copZ < 50) copZ = 2000; // Респавн
+        if (playerNode != null) {
+            playerNode.setLocalPosition(new Vector3(playerX, 0f, playerZ));
+            updateCamera();
         }
 
+        // Логика стрельбы (просто проверяем дистанцию)
         if (shooting) {
-            shooting = false; // Стреляем по одному выстрелу
-            if (ammo > 0) {
-                ammo--;
-                soundManager.playClick(); // Звук выстрела (используем клик)
-                // Проверка попадания
-                if (!copExploded && copZ > 0 && copZ < 1500 && Math.abs(copX - playerX) < 0.3f) {
-                    copExploded = true;
-                    soundManager.playFire(); // Звук взрыва
+            shooting = false;
+            if (copNode != null) {
+                Vector3 copPos = copNode.getWorldPosition();
+                float dist = Vector3.subtract(copPos, new Vector3(playerX, 0f, playerZ)).length();
+                if (dist < 30f) {
+                    soundManager.playFire();
+                    // Тут можно взорвать/удалить copNode
                 }
             }
         }
     }
 
-    private void draw() {
-        Canvas c = null;
-        try {
-            c = getHolder().lockCanvas();
-            if (c == null) return;
-            
-            // Небо и земля
-            c.drawRect(0, 0, width, height, skyPaint);
-            c.drawRect(0, horizonY, width, height, new Paint(Color.rgb(50, 120, 50))); // Трава
-
-            // Дорога (в перспективе)
-            drawRoad(c);
-
-            // Машина полиции (3D-куб)
-            if (!copExploded) {
-                draw3DCube(c, copX, copZ, Color.BLUE, 200, 100, 150);
-            }
-
-            // Отрисовка оружия (от первого лица)
-            drawWeapon(c);
-
-            // UI
-            textPaint.setTextSize(50);
-            c.drawText("Патроны: " + ammo, 50, 80, textPaint);
-            c.drawText("Позиция X: " + String.format("%.2f", playerX), 50, 140, textPaint);
-
-            // Кнопки управления
-            drawButton(c, 150, height - 200, 100, "◀"); // Влево
-            drawButton(c, 350, height - 200, 100, "▶"); // Вправо
-            drawButton(c, width - 350, height - 200, 100, "▲"); // Вперед
-            drawButton(c, width - 150, height - 200, 100, "▼"); // Назад
-            
-            // Кнопка выстрела
-            drawButton(c, width - 150, height - 450, 120, "🔥 ОГОНЬ");
-
-        } finally {
-            if (c != null) getHolder().unlockCanvasAndPost(c);
+    private void updateCamera() {
+        Camera camera = getScene().getCamera();
+        if (camera != null) {
+            camera.setLocalPosition(new Vector3(playerX, 3f, playerZ + 6f));
+            camera.setLocalRotation(new Quaternion(new Vector3(1f, 0f, 0f), -20f));
         }
     }
 
-    // Рисуем дорогу, сужающуюся к горизонту
-    private void drawRoad(Canvas c) {
-        Path road = new Path();
-        float roadWBottom = width * 1.5f;
-        float roadWTop = width * 0.1f;
-        
-        road.moveTo(width / 2f - roadWTop / 2, horizonY);
-        road.lineTo(width / 2f + roadWTop / 2, horizonY);
-        road.lineTo(width / 2f + roadWBottom / 2, height);
-        road.lineTo(width / 2f - roadWBottom / 2, height);
-        road.close();
-        c.drawPath(road, roadPaint);
-
-        // Разметка
-        Paint line = new Paint();
-        line.setColor(Color.YELLOW);
-        for (float z = 0; z < 2000; z += 200) {
-            float scale = fov / (z + fov);
-            float y = horizonY + (height - horizonY) * scale;
-            float w = width * 0.02f * scale;
-            c.drawRect(width / 2f - w / 2, y, width / 2f + w / 2, y + 20 * scale, line);
-        }
+    private void drawUI() {
+        // UI рисуется поверх 3D-сцены через обычный Canvas
+        // SceneView позволяет переопределить onDraw
+        invalidate(); 
     }
 
-    // Рисуем 3D-куб (объект)
-    private void draw3DCube(Canvas c, float objX, float objZ, int color, float sizeW, float sizeH, float sizeD) {
-        if (objZ <= 0 || objZ > 3000) return; // За пределами видимости
+    @Override
+    public void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
         
-        float scale = fov / objZ; // Чем дальше, тем меньше
-        float screenX = width / 2f + (objX * width * 0.5f * scale) - (width/2f); // Учет смещения игрока
-        float screenY = horizonY + (height / 2f) * scale; 
-        
-        float w = sizeW * scale;
-        float h = sizeH * scale;
+        // Кнопки управления
+        drawButton(canvas, 150, getHeight() - 200, 100, "◀");
+        drawButton(canvas, 350, getHeight() - 200, 100, "▶");
+        drawButton(canvas, getWidth() - 350, getHeight() - 200, 100, "▲");
+        drawButton(canvas, getWidth() - 150, getHeight() - 200, 100, "▼");
+        drawButton(canvas, getWidth() - 150, getHeight() - 450, 100, "🔥");
 
-        Paint p = new Paint();
-        p.setColor(color);
-
-        // Задняя стенка (чуть темнее)
-        Paint back = new Paint();
-        back.setColor(Color.rgb(
-            Math.max(0, Color.red(color) - 30),
-            Math.max(0, Color.green(color) - 30),
-            Math.max(0, Color.blue(color) - 30)
-        ));
-
-        // Рисуем как прямоугольник
-        c.drawRect(screenX - w / 2, screenY - h, screenX + w / 2, screenY, p);
-        
-        // Мигалка (если полиция)
-        if (color == Color.BLUE) {
-            Paint light = new Paint();
-            light.setColor(Color.RED);
-            c.drawRect(screenX - w / 2 + 10, screenY - h + 10, screenX + w / 2 - 10, screenY - h + 30, light);
-        }
-    }
-
-    // Оружие (рука с пистолетом)
-    private void drawWeapon(Canvas c) {
-        Path gun = new Path();
-        gun.moveTo(width - 200, height);
-        gun.lineTo(width - 100, height - 300);
-        gun.lineTo(width - 50, height - 300);
-        gun.lineTo(width, height);
-        gun.close();
-        c.drawPath(gun, gunPaint);
-        
-        // Ствол
-        Paint barrel = new Paint();
-        barrel.setColor(Color.BLACK);
-        c.drawRect(width - 150, height - 300, width - 70, height - 250, barrel);
+        canvas.drawText("Патроны: 30", 50, 80, textPaint);
     }
 
     private void drawButton(Canvas c, float cx, float cy, float r, String label) {
-        c.drawCircle(cx, cy, r, btnPaint);
+        c.drawCircle(cx, cy, r, buttonPaint);
         textPaint.setTextSize(60);
         textPaint.setTextAlign(Paint.Align.CENTER);
         Paint.FontMetrics fm = textPaint.getFontMetrics();
@@ -272,11 +242,11 @@ public class GameView extends SurfaceView implements SurfaceHolder.Callback, Run
         float x = e.getX(), y = e.getY();
         
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
-            if (dist(x, y, 150, height - 200) < 120) movingLeft = true;
-            if (dist(x, y, 350, height - 200) < 120) movingRight = true;
-            if (dist(x, y, width - 350, height - 200) < 120) movingForward = true;
-            if (dist(x, y, width - 150, height - 200) < 120) movingBackward = true;
-            if (dist(x, y, width - 150, height - 450) < 150) shooting = true;
+            if (dist(x, y, 150, getHeight() - 200) < 120) movingLeft = true;
+            if (dist(x, y, 350, getHeight() - 200) < 120) movingRight = true;
+            if (dist(x, y, getWidth() - 350, getHeight() - 200) < 120) movingForward = true;
+            if (dist(x, y, getWidth() - 150, getHeight() - 200) < 120) movingBackward = true;
+            if (dist(x, y, getWidth() - 150, getHeight() - 450) < 150) shooting = true;
         } else if (e.getAction() == MotionEvent.ACTION_UP) {
             movingLeft = movingRight = movingForward = movingBackward = false;
         }
