@@ -2,6 +2,7 @@ package com.simferopol.gta;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
@@ -18,30 +19,34 @@ public class MainActivity extends Activity {
             WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
 
-        soundManager = new SoundManager(this);
-        soundManager.init();
+        try {
+            soundManager = new SoundManager(this);
+            soundManager.init();
 
-        gameView = new GameView(this, soundManager);
-        setContentView(gameView);
+            gameView = new GameView(this, soundManager);
+            setContentView(gameView);
+        } catch (Exception e) {
+            Log.e("GTA", "Error starting game", e);
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        gameView.pause();
-        soundManager.pauseAll();
+        if (gameView != null) gameView.pause();
+        if (soundManager != null) soundManager.pauseAll();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        gameView.resume();
-        soundManager.resumeAll();
+        if (gameView != null) gameView.resume();
+        if (soundManager != null) soundManager.resumeAll();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        soundManager.release();
+        if (soundManager != null) soundManager.release();
     }
 }
