@@ -4,13 +4,11 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.net.Uri;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 
 import com.google.ar.sceneform.Camera;
 import com.google.ar.sceneform.Node;
-import com.google.ar.sceneform.Scene;
 import com.google.ar.sceneform.SceneView;
 import com.google.ar.sceneform.math.Quaternion;
 import com.google.ar.sceneform.math.Vector3;
@@ -25,18 +23,15 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
     private Node playerNode;
     private Node copNode;
 
-    // Координаты игрока
     private float playerX = 0f;
     private float playerZ = 0f;
 
-    // Управление
     private boolean movingForward = false;
     private boolean movingBackward = false;
     private boolean movingLeft = false;
     private boolean movingRight = false;
     private boolean shooting = false;
 
-    // Рисование UI
     private Paint textPaint = new Paint();
     private Paint buttonPaint = new Paint();
 
@@ -51,54 +46,31 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
         textPaint.setColor(Color.WHITE);
         textPaint.setTextSize(50);
         textPaint.setAntiAlias(true);
-        
         buttonPaint.setColor(Color.argb(120, 255, 255, 255));
     }
 
     private void initWorld() {
-        // 1. Загружаем игрока (CJ)
-        loadModel("cj.glb", renderable -> {
-            playerNode = new Node();
-            playerNode.setRenderable(renderable);
-            playerNode.setLocalPosition(new Vector3(0, 0, 0));
-            playerNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
-            getScene().addChild(playerNode);
-        });
+        // Игрок (куб, если нет модели)
+        Node player = new Node();
+        player.setRenderable(ShapeFactory.makeCube(new Vector3(1f, 1.8f, 1f), new Vector3(0, 0.9f, 0), null));
+        player.setLocalPosition(new Vector3(0, 0, 0));
+        getScene().addChild(player);
+        playerNode = player;
 
-        // 2. Спавним NPC (Полицейский) - заглушка куб, если нет модели
-        loadModel("npc.glb", renderable -> {
-            copNode = new Node();
-            copNode.setRenderable(renderable);
-            copNode.setLocalPosition(new Vector3(10f, 0f, -15f));
-            copNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
-            getScene().addChild(copNode);
-        });
+        // Враг (красный куб)
+        Node cop = new Node();
+        cop.setRenderable(ShapeFactory.makeCube(new Vector3(1f, 1.8f, 1f), new Vector3(0, 0.9f, 0), null));
+        cop.setLocalPosition(new Vector3(5f, 0, -5f));
+        getScene().addChild(cop);
+        copNode = cop;
 
-        // 3. Спавним Дома
-        Node houseNode = new Node();
-        houseNode.setRenderable(ShapeFactory.makeCube(new Vector3(10f, 10f, 10f), new Vector3(0, 5f, 0), null));
-        houseNode.setLocalPosition(new Vector3(-15f, 0f, -20f));
-        getScene().addChild(houseNode);
-    }
+        // Дом (большой серый куб)
+        Node house = new Node();
+        house.setRenderable(ShapeFactory.makeCube(new Vector3(5f, 5f, 5f), new Vector3(0, 2.5f, 0), null));
+        house.setLocalPosition(new Vector3(-10f, 0, -10f));
+        getScene().addChild(house);
 
-    private void loadModel(String path, OnModelLoaded listener) {
-        ModelRenderable.builder()
-            .setSource(getContext(), Uri.parse(path))
-            .build()
-            .thenAccept(listener::onLoaded)
-            .exceptionally(throwable -> {
-                // Если модели нет — создаем куб-заглушку
-                listener.onLoaded(ShapeFactory.makeCube(
-                    new Vector3(1f, 1f, 1f), 
-                    new Vector3(0, 0.5f, 0), 
-                    null
-                ));
-                return null;
-            });
-    }
-
-    interface OnModelLoaded {
-        void onLoaded(ModelRenderable renderable);
+        updateCamera();
     }
 
     @Override
@@ -136,7 +108,7 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
         while (running) {
             long start = System.currentTimeMillis();
             update();
-            postInvalidate(); // Перерисовка UI
+            postInvalidate();
             long elapsed = System.currentTimeMillis() - start;
             long sleep = 16 - elapsed;
             if (sleep > 0) {
@@ -147,7 +119,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
 
     private void update() {
         float speed = 0.1f;
-        
         if (movingForward) playerZ -= speed;
         if (movingBackward) playerZ += speed;
         if (movingLeft) playerX -= speed;
@@ -181,14 +152,11 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
     @Override
     public void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        
-        // Кнопки управления
         drawButton(canvas, 150, getHeight() - 200, 100, "◀");
         drawButton(canvas, 350, getHeight() - 200, 100, "▶");
         drawButton(canvas, getWidth() - 350, getHeight() - 200, 100, "▲");
         drawButton(canvas, getWidth() - 150, getHeight() - 200, 100, "▼");
         drawButton(canvas, getWidth() - 150, getHeight() - 450, 100, "🔥");
-
         canvas.drawText("Патроны: 30", 50, 80, textPaint);
     }
 
@@ -205,7 +173,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
     @Override
     public boolean onTouchEvent(MotionEvent e) {
         float x = e.getX(), y = e.getY();
-        
         if (e.getAction() == MotionEvent.ACTION_DOWN) {
             if (dist(x, y, 150, getHeight() - 200) < 120) movingLeft = true;
             if (dist(x, y, 350, getHeight() - 200) < 120) movingRight = true;
