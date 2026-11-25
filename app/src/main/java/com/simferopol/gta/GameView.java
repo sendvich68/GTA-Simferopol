@@ -12,7 +12,6 @@ import com.google.ar.sceneform.Camera;
 import com.google.ar.sceneform.Node;
 import com.google.ar.sceneform.Scene;
 import com.google.ar.sceneform.SceneView;
-import com.google.ar.sceneform.animation.ModelAnimator;
 import com.google.ar.sceneform.math.Quaternion;
 import com.google.ar.sceneform.math.Vector3;
 import com.google.ar.sceneform.rendering.ModelRenderable;
@@ -25,8 +24,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
 
     private Node playerNode;
     private Node copNode;
-    private ModelAnimator playerAnimator;
-    private ModelAnimator copAnimator;
 
     // Координаты игрока
     private float playerX = 0f;
@@ -66,54 +63,36 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
             playerNode.setLocalPosition(new Vector3(0, 0, 0));
             playerNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
             getScene().addChild(playerNode);
-
-            if (renderable.getAnimationDataCount() > 0) {
-                playerAnimator = new ModelAnimator(renderable, 0);
-                playerAnimator.setLooping(true);
-                playerAnimator.start();
-            }
         });
 
-        // 2. Спавним NPC (Полицейский)
-        // Используем куб как заглушку, если нет модели npc.glb
+        // 2. Спавним NPC (Полицейский) - заглушка куб, если нет модели
         loadModel("npc.glb", renderable -> {
             copNode = new Node();
             copNode.setRenderable(renderable);
-            copNode.setLocalPosition(new Vector3(10f, 0f, -15f)); // Стоит впереди
+            copNode.setLocalPosition(new Vector3(10f, 0f, -15f));
             copNode.setLocalScale(new Vector3(1.5f, 1.5f, 1.5f));
             getScene().addChild(copNode);
-            
-            if (renderable.getAnimationDataCount() > 0) {
-                copAnimator = new ModelAnimator(renderable, 0);
-                copAnimator.setLooping(true);
-                copAnimator.start();
-            }
         });
 
-        // 3. Спавним Дома (кубики, если нет моделей)
+        // 3. Спавним Дома
         Node houseNode = new Node();
         houseNode.setRenderable(ShapeFactory.makeCube(new Vector3(10f, 10f, 10f), new Vector3(0, 5f, 0), null));
         houseNode.setLocalPosition(new Vector3(-15f, 0f, -20f));
         getScene().addChild(houseNode);
     }
 
-    // Хелпер для загрузки моделей
     private void loadModel(String path, OnModelLoaded listener) {
         ModelRenderable.builder()
             .setSource(getContext(), Uri.parse(path))
             .build()
-            .thenAccept(renderable -> {
-                if (listener != null) listener.onLoaded(renderable);
-            })
+            .thenAccept(listener::onLoaded)
             .exceptionally(throwable -> {
                 // Если модели нет — создаем куб-заглушку
-                if (listener != null) {
-                    listener.onLoaded(ShapeFactory.makeCube(
-                        new Vector3(1f, 1f, 1f), 
-                        new Vector3(0, 0.5f, 0), 
-                        null
-                    ));
-                }
+                listener.onLoaded(ShapeFactory.makeCube(
+                    new Vector3(1f, 1f, 1f), 
+                    new Vector3(0, 0.5f, 0), 
+                    null
+                ));
                 return null;
             });
     }
@@ -140,11 +119,7 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
         } catch (InterruptedException ignored) {}
     }
 
-    public void pause() { 
-        running = false; 
-        if (playerAnimator != null) playerAnimator.pause();
-        if (copAnimator != null) copAnimator.pause();
-    }
+    public void pause() { running = false; }
 
     public void resume() {
         if (!running && thread != null && thread.isAlive()) {
@@ -154,8 +129,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
             thread = new Thread(this);
             thread.start();
         }
-        if (playerAnimator != null && !playerAnimator.isRunning()) playerAnimator.resume();
-        if (copAnimator != null && !copAnimator.isRunning()) copAnimator.resume();
     }
 
     @Override
@@ -163,7 +136,7 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
         while (running) {
             long start = System.currentTimeMillis();
             update();
-            drawUI();
+            postInvalidate(); // Перерисовка UI
             long elapsed = System.currentTimeMillis() - start;
             long sleep = 16 - elapsed;
             if (sleep > 0) {
@@ -185,7 +158,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
             updateCamera();
         }
 
-        // Логика стрельбы (просто проверяем дистанцию)
         if (shooting) {
             shooting = false;
             if (copNode != null) {
@@ -193,7 +165,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
                 float dist = Vector3.subtract(copPos, new Vector3(playerX, 0f, playerZ)).length();
                 if (dist < 30f) {
                     soundManager.playFire();
-                    // Тут можно взорвать/удалить copNode
                 }
             }
         }
@@ -205,12 +176,6 @@ public class GameView extends SceneView implements SurfaceHolder.Callback, Runna
             camera.setLocalPosition(new Vector3(playerX, 3f, playerZ + 6f));
             camera.setLocalRotation(new Quaternion(new Vector3(1f, 0f, 0f), -20f));
         }
-    }
-
-    private void drawUI() {
-        // UI рисуется поверх 3D-сцены через обычный Canvas
-        // SceneView позволяет переопределить onDraw
-        invalidate(); 
     }
 
     @Override
